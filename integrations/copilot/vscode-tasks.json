@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Fetch Gliaxin Memory",
+      "type": "shell",
+      "command": "curl -s \"${env:GLIAXIN_API_URL}/v1/memory/search?query=${input:memoryQuery}&end_user_id=${env:GLIAXIN_USER_ID}&limit=8\" -H \"X-Api-Key: ${env:GLIAXIN_API_KEY}\" | python3 -c \"import sys,json; d=json.load(sys.stdin); [print(m['content']) for m in d.get('memories',[])]\" > .gliaxin-context.txt && echo 'Memory written to .gliaxin-context.txt'",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      }
+    },
+    {
+      "label": "Save Turn to Gliaxin Memory",
+      "type": "shell",
+      "command": "python3 ${env:HOME}/.gliaxin/copilot/save_memory.py",
+      "presentation": {
+        "reveal": "silent"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "memoryQuery",
+      "description": "What are you working on?",
+      "type": "promptString",
+      "default": "current task"
+    }
+  ]
+}

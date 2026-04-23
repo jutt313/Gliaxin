@@ -1,0 +1,15 @@
+{
+  "name": "gliaxin-oss-backend",
+  "private": true,
+  "scripts": {
+    "dev": "cd src && uvicorn main:app --reload --port 9823",
+    "start": "cd src && uvicorn main:app --host 0.0.0.0 --port 9823",
+    "db:migrate": "prisma migrate deploy --schema=database/schema.prisma",
+    "db:generate": "prisma generate --schema=database/schema.prisma",
+    "db:studio": "prisma studio --schema=database/schema.prisma",
+    "db:reset": "prisma migrate reset --schema=database/schema.prisma"
+  },
+  "devDependencies": {
+    "prisma": "^5.0.0"
+  }
+}

@@ -1,0 +1,26 @@
+# Gliaxin Memory Rules for Cursor
+
+## Memory retrieval
+
+Before answering any question, search for relevant past context:
+
+  GET ${GLIAXIN_API_URL}/v1/memory/search
+  Query params: query=<user_question>, end_user_id=<GLIAXIN_USER_ID>, limit=5
+  Header: X-Api-Key: <GLIAXIN_API_KEY>
+
+If memories are returned, include them as context at the top of your response under the heading:
+  --- Gliaxin Memory ---
+  [memory content]
+  --- End Memory ---
+
+## Memory saving
+
+After each substantive reply (not trivial one-liners), save the turn:
+
+  POST ${GLIAXIN_API_URL}/v1/memory/add
+  Header: X-Api-Key: <GLIAXIN_API_KEY>
+  Body: { "end_user_id": "<GLIAXIN_USER_ID>", "messages": [{"role": "user", "content": "<prompt>"}, {"role": "assistant", "content": "<reply>"}] }
+
+## Priority
+
+Memory context takes priority over generic assumptions. If memory says "user prefers TypeScript", do not suggest JavaScript.

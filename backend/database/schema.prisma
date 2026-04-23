@@ -1,0 +1,255 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector")]
+}
+
+// ─────────────────────────────────────────
+// 1. PROJECTS
+// ─────────────────────────────────────────
+model Project {
+  project_id   String      @id @default(uuid())
+  name         String
+  description  String?
+  project_type ProjectType @default(personal)
+  created_at   DateTime    @default(now())
+
+  agents     Agent[]
+  vaults     Vault[]
+  layer_a    LayerA[]
+  layer_b    LayerB[]
+  audit_logs AuditLog[]
+}
+
+enum ProjectType {
+  personal
+  app
+}
+
+// ─────────────────────────────────────────
+// 2. AGENTS
+// ─────────────────────────────────────────
+model Agent {
+  agent_id   String    @id @default(uuid())
+  project_id String
+  name       String
+  created_at DateTime  @default(now())
+  deleted_at DateTime?
+
+  project    Project    @relation(fields: [project_id], references: [project_id])
+  layer_a    LayerA[]
+  layer_b    LayerB[]
+  audit_logs AuditLog[]
+}
+
+// ─────────────────────────────────────────
+// 3. VAULTS
+// ─────────────────────────────────────────
+model Vault {
+  vault_id       String    @id @default(uuid())
+  project_id     String
+  end_user_id    String?
+  created_at     DateTime  @default(now())
+  last_active_at DateTime?
+
+  project    Project    @relation(fields: [project_id], references: [project_id])
+  layer_a    LayerA[]
+  layer_b    LayerB[]
+  conflicts  Conflict[]
+  audit_logs AuditLog[]
+
+  @@unique([project_id, end_user_id])
+  @@index([project_id])
+}
+
+// ─────────────────────────────────────────
+// 4. LAYER A — Raw Store
+// ─────────────────────────────────────────
+model LayerA {
+  raw_id            String           @id @default(uuid())
+  vault_id          String
+  project_id        String
+  agent_id          String?
+  content           String
+  processing_status ProcessingStatus @default(pending)
+  created_at        DateTime         @default(now())
+  metadata          Json?
+
+  turn_id       String?
+  role          TurnRole?
+  message_index Int?
+  scope_hint    ScopeHint @default(agent)
+
+  vault   Vault   @relation(fields: [vault_id], references: [vault_id])
+  project Project @relation(fields: [project_id], references: [project_id])
+  agent   Agent?  @relation(fields: [agent_id], references: [agent_id])
+  layer_b LayerB[]
+
+  @@index([vault_id])
+  @@index([project_id])
+  @@index([processing_status])
+  @@index([created_at])
+  @@index([turn_id])
+}
+
+enum TurnRole {
+  user
+  assistant
+}
+
+enum ScopeHint {
+  agent
+  project
+}
+
+enum ProcessingStatus {
+  pending
+  processing
+  done
+  failed
+}
+
+// ─────────────────────────────────────────
+// 5. LAYER B — Processed Store
+// ─────────────────────────────────────────
+model LayerB {
+  memory_id         String       @id @default(uuid())
+  raw_id            String
+  vault_id          String
+  project_id        String
+  agent_id          String?
+  content           String
+  embedding         Unsupported("vector(768)")?
+  category          Category
+  memory_type       MemoryType
+  scope             Scope        @default(project)
+  slot              String?
+  importance        Float        @default(0.5)
+  status            MemoryStatus @default(active)
+  superseded_by     String?
+  valid_from        DateTime     @default(now())
+  valid_until       DateTime?
+  confidence        Float        @default(1.0)
+  extractor_version String
+  tags              String[]     @default([])
+  parent_id         String?
+  related_ids       String[]     @default([])
+  is_cluster_summary Boolean     @default(false)
+  resolved_at       DateTime?
+  created_at        DateTime     @default(now())
+  metadata          Json?
+
+  raw_memory LayerA   @relation(fields: [raw_id], references: [raw_id])
+  vault      Vault    @relation(fields: [vault_id], references: [vault_id])
+  project    Project  @relation(fields: [project_id], references: [project_id])
+  agent      Agent?   @relation(fields: [agent_id], references: [agent_id])
+
+  superseded_by_memory LayerB?  @relation("MemoryHistory", fields: [superseded_by], references: [memory_id])
+  supersedes           LayerB[] @relation("MemoryHistory")
+
+  parent   LayerB?  @relation("MemoryParent", fields: [parent_id], references: [memory_id])
+  children LayerB[] @relation("MemoryParent")
+
+  conflicts_old Conflict[] @relation("OldMemory")
+  conflicts_new Conflict[] @relation("NewMemory")
+
+  @@index([vault_id])
+  @@index([project_id])
+  @@index([status])
+  @@index([memory_type])
+  @@index([slot])
+  @@index([created_at])
+  @@index([vault_id, status])
+}
+
+enum Category {
+  job
+  ideas
+  problems
+  personal
+  decisions
+  other
+}
+
+enum MemoryType {
+  episodic
+  semantic
+  procedural
+}
+
+enum Scope {
+  project
+  agent
+  user
+}
+
+enum MemoryStatus {
+  active
+  resolved
+  superseded
+  disputed
+}
+
+// ─────────────────────────────────────────
+// 6. CONFLICTS
+// ─────────────────────────────────────────
+model Conflict {
+  conflict_id         String         @id @default(uuid())
+  vault_id            String
+  old_memory_id       String
+  new_memory_id       String
+  slot                String?
+  status              ConflictStatus @default(pending)
+  clarifying_question String?
+  topic_tags          String[]       @default([])
+  detected_at         DateTime       @default(now())
+  resolved_at         DateTime?
+
+  vault      Vault  @relation(fields: [vault_id], references: [vault_id])
+  old_memory LayerB @relation("OldMemory", fields: [old_memory_id], references: [memory_id])
+  new_memory LayerB @relation("NewMemory", fields: [new_memory_id], references: [memory_id])
+
+  @@index([vault_id])
+  @@index([status])
+}
+
+enum ConflictStatus {
+  pending
+  resolved
+  dismissed
+}
+
+// ─────────────────────────────────────────
+// 7. AUDIT LOG
+// ─────────────────────────────────────────
+model AuditLog {
+  log_id     String      @id @default(uuid())
+  project_id String
+  vault_id   String?
+  agent_id   String?
+  action     AuditAction
+  metadata   Json?
+  created_at DateTime    @default(now())
+
+  project Project  @relation(fields: [project_id], references: [project_id])
+  vault   Vault?   @relation(fields: [vault_id], references: [vault_id])
+  agent   Agent?   @relation(fields: [agent_id], references: [agent_id])
+
+  @@index([project_id])
+  @@index([vault_id])
+  @@index([created_at])
+}
+
+enum AuditAction {
+  add
+  search
+  resolve
+  forget
+  reprocess
+  fix
+  raw
+}
